@@ -29,7 +29,7 @@ After finishing CARLA installation, clone this repo and place it as follows:
     │   └── util                
     └── ...
 
-# Stream A: Implementing end-to-end learning for autonomous driving and perform test drive on course 1
+# E2E: Implementing end-to-end learning for autonomous driving and perform test drive on course 1
 ![Alt text](https://github.com/m4tice/adb/blob/main/assets/course1v2.gif)
 
 **TASKS:**  
@@ -45,7 +45,7 @@ After finishing CARLA installation, clone this repo and place it as follows:
 </p>
 
 
-# Stream B: Implementing Model Predictive Control for autonomous driving and perform test drive on course 2
+# MPC: Implementing Model Predictive Control for autonomous driving and perform test drive on course 2
 ![Alt text](https://github.com/m4tice/adb/blob/main/assets/course2v2.gif)
 
 **TASKS:**  
