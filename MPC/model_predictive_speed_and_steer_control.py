@@ -12,7 +12,7 @@ import numpy as np
 import sys
 
 sys.path.append(r"../../")
-import blockweek_ad.stream_b.cubic_spline_planner as cubic_spline_planner
+import blockweek_ad.MPC.cubic_spline_planner as cubic_spline_planner
 
 
 NX = 4  # x = x, y, v, yaw

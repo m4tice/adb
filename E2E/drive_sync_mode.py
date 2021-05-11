@@ -23,7 +23,7 @@ import keyboard
 import argparse
 import numpy as np
 
-from blockweek_ad.stream_a.control import Controller
+from blockweek_ad.E2E.control import Controller
 from blockweek_ad.ca_utils.tools import s2b
 from tensorflow.keras.models import load_model
 from queue import Queue
@@ -77,7 +77,7 @@ def game_loop(args):
 
         # Prediction Model
         print('- Loading model...')
-        model_name = './models/model_test.h5'
+        model_name = './models/model-t4-020-0.000022.h5'
         model = load_model(model_name)
         print("- Using model: {}".format(model_name))
 

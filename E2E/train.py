@@ -11,7 +11,7 @@ from datetime import datetime
 from sklearn.model_selection import train_test_split
 
 import blockweek_ad.ca_utils.training_util as tu
-from blockweek_ad.stream_a.nvidia_model import nvidia_model
+from blockweek_ad.E2E.nvidia_model import nvidia_model
 
 
 # -- PATH SETTINGS

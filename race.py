@@ -3,7 +3,7 @@ import os
 import sys
 
 try:
-    sys.path.append(glob.glob('../../carla/dist/carla-*%d.%d-%s.egg' % (
+    sys.path.append(glob.glob('../carla/dist/carla-*%d.%d-%s.egg' % (
         sys.version_info.major,
         sys.version_info.minor,
         'win-amd64' if os.name == 'nt' else 'linux-x86_64'))[0])
@@ -13,11 +13,11 @@ except IndexError:
 
 import carla
 
-sys.path.append(r"../../")
+sys.path.append(r"..")
 import blockweek_ad.ca_utils.dictionaries as dic
 import blockweek_ad.ca_utils.tools as to
 import blockweek_ad.ca_utils.sensor_utils as su
-import blockweek_ad.stream_b.cubic_spline_planner as cubic_spline_planner
+import blockweek_ad.MPC.cubic_spline_planner as cubic_spline_planner
 
 import time
 import argparse
@@ -28,21 +28,25 @@ warnings.filterwarnings("ignore")
 import cvxpy
 import numpy as np
 
+from blockweek_ad.E2E.control import Controller
+from blockweek_ad.ca_utils.tools import s2b
+from tensorflow.keras.models import load_model
+
 from queue import Queue
 from queue import Empty
-from blockweek_ad.ca_utils.tools import s2b
 
 np.random.seed(2)
 
 # -- VARIABLE INITIALIZATION --
 town_dic = dic.town04
-course_dict = dic.course2
+course_redbull = dic.course1
+course_petronas = dic.course2
 
 # -- MPC INITIALIZATION -------
 # == Model Predictive Controller =======================================================================================
 NX = 4  # x = x, y, v, yaw
 NU = 2  # a = [accel, steer]
-T = 8  # horizon length
+T = 6  # horizon length
 
 # mpc parameters
 R = np.diag([0.01, 0.01])  # input cost matrix
@@ -57,7 +61,7 @@ MAX_TIME = 500.0  # max simulation time
 MAX_ITER = 3  # Max iteration
 DU_TH = 0.1  # iteration finish param
 
-TARGET_SPEED = 54.0 / 3.6  # [m/s] target speed
+TARGET_SPEED = 45 / 3.6  # [m/s] target speed
 N_IND_SEARCH = 10  # Search index number
 
 DT = 0.2  # [s] time tick
@@ -67,7 +71,7 @@ WB = 2.5  # [m]
 
 MAX_STEER = np.deg2rad(45.0)  # maximum steering angle [rad]
 MAX_DSTEER = np.deg2rad(30.0)  # maximum steering speed [rad/s]
-MAX_SPEED = 54.0 / 3.6  # maximum speed [m/s]
+MAX_SPEED = 45 / 3.6  # maximum speed [m/s]
 MIN_SPEED = 0.0 / 3.6  # minimum speed [m/s]
 MAX_ACCEL = 1.0  # maximum accel [m/ss]
 
@@ -259,6 +263,7 @@ def linear_mpc_control(xref, xbar, x0, dref):
         odelta = get_nparray_from_matrix(u.value[1, :])
 
     else:
+        print("Error: Cannot solve mpc..")
         oa, odelta, ox, oy, oyaw, ov = None, None, None, None, None, None
 
     return oa, odelta, ox, oy, oyaw, ov
@@ -300,6 +305,25 @@ def calc_ref_trajectory(state, cx, cy, cyaw, ck, sp, dl, pind):
             dref[0, i] = 0.0
 
     return xref, ind, dref
+
+
+def check_goal(state, goal, tind, nind):
+    # check goal
+    dx = state.x - goal[0]
+    dy = state.y - goal[1]
+    d = math.hypot(dx, dy)
+
+    isgoal = (d <= GOAL_DIS)
+
+    if abs(tind - nind) >= 5:
+        isgoal = False
+
+    isstop = (abs(state.v) <= STOP_SPEED)
+
+    if isstop:
+        return True
+
+    return False
 
 
 def calc_speed_profile(cx, cy, cyaw, target_speed):
@@ -398,22 +422,18 @@ def update_carla_state(vehicle, state, delta):
     return state, delta
 
 
-def sensor_callback(sensor_data, sensor_queue):
-    sensor_queue.put(sensor_data)
+def sensor_callback(sensor_data, sensor_queue, sensor_name):
+    sensor_queue.put((sensor_data, sensor_name))
 
 
-def game_loop(args):  # hp: Horizon plot - cp: Course plot
+def game_loop(args):
     client = carla.Client('localhost', 2000)
     client.set_timeout(10.0)
 
-    course = to.load_course_data("../database/{}".format(course_dict['filename']))
-    dl = 1.0  # course tick
-    cx, cy, cyaw, ck = get_course(course, dl)
-    sp = calc_speed_profile(cx, cy, cyaw, TARGET_SPEED)
-    initial_state = State(x=cx[0], y=cy[0], yaw=cyaw[0], v=0.0)
+    # c1 = to.load_course_data("./database/{}".format(course_redbull['filename']))
 
     # List initialization
-    actor_list, features = [], []
+    actor_list, sensor_list, features = [], [], []
     sensor_queue = Queue()
 
     try:
@@ -438,43 +458,113 @@ def game_loop(args):  # hp: Horizon plot - cp: Course plot
         blueprint_library = world.get_blueprint_library()  # get blueprint library
 
         if args.cp:
-            carla_world_plot(world, course, z=0.5)
+            carla_world_plot(world, course_petronas, z=0.5)
 
-        # Vehicle
-        vehicle_model = "model3"  # "model3" or "lincoln" or "mercedesccc"
-        vehicle_color = dic.petronas_color
-        vehicle = su.spawn_vehicle(world, blueprint_library, vehicle_model, course_dict, vehicle_color)
-        actor_list.append(vehicle)
+        # Vehicle 1
+        petronas_model = "model3"  # "model3" or "lincoln" or "mercedesccc"
+        petronas_color = dic.petronas_color
+        petronas = su.spawn_vehicle(world, blueprint_library, petronas_model, course_petronas, petronas_color)
+        actor_list.append(petronas)
 
-        # == Camera: Spectator
-        cam_spectate = su.spawn_rgb_camera(world, blueprint_library, dic.cam_spectate_1, vehicle)
-        cam_spectate.listen(lambda data: sensor_callback(data, sensor_queue))
-        actor_list.append(cam_spectate)
+        loaded_course = to.load_course_data("./database/{}".format(course_petronas['filename']))
+        dl = 1.0  # course tick
+        cx, cy, cyaw, ck = get_course(loaded_course, dl)
+        sp = calc_speed_profile(cx, cy, cyaw, TARGET_SPEED)
+        initial_state = State(x=cx[0], y=cy[0], yaw=cyaw[0], v=0.0)
+
+        # Vehicle 2
+        redbull_model = "model3"  # "model3" or "lincoln" or "mercedesccc"
+        redbull_color = dic.redbull_color
+        redbull = su.spawn_vehicle(world, blueprint_library, redbull_model, course_redbull, redbull_color)
+        actor_list.append(redbull)
+
+        # Controller MPC for team Petronas
+        goal = [cx[-1], cy[-1]]
+        state = initial_state
+
+        # initial yaw compensation
+        if state.yaw - cyaw[0] >= math.pi:
+            state.yaw -= math.pi * 2.0
+        elif state.yaw - cyaw[0] <= -math.pi:
+            state.yaw += math.pi * 2.0
+
+        time_step = 0.0
+        x = [state.x]
+        y = [state.y]
+        yaw = [state.yaw]
+        v = [state.v]
+        t = [0.0]
+        d = [0.0]
+        a = [0.0]
+        target_ind, _ = calc_nearest_index(state, cx, cy, cyaw, 0)
+
+        odelta, oa = None, None
+        cyaw = smooth_yaw(cyaw)
+
+        # == AI Model for team Red Bull
+        print('- Loading model...')
+        model_name = './E2E/models/model-t4-020-0.000022.h5'
+        model = load_model(model_name)
+        print("- Using model: {}".format(model_name))
+
+        # E2E Controller for team Red Bull
+        controller = Controller(redbull, model, min_spd=2, max_spd=5, cam_set=dic.cam_rgb_set_2)
+
+        # == Camera: spectator for Petronas
+        cam_spectate_1 = su.spawn_rgb_camera(world, blueprint_library, dic.cam_spectate_1, petronas)
+        cam_spectate_1.listen(lambda data: sensor_callback(data, sensor_queue, 1))
+        sensor_list.append(cam_spectate_1)
+
+        # == Camera: spectator for Red Bull
+        cam_spectate_2 = su.spawn_rgb_camera(world, blueprint_library, dic.cam_spectate_1, redbull)
+        cam_spectate_2.listen(lambda data: sensor_callback(data, sensor_queue, 2))
+        sensor_list.append(cam_spectate_2)
+
+        # == Camera: RGB
+        cam_rgb = su.spawn_rgb_camera(world, blueprint_library, dic.cam_rgb_set_2, redbull)
+        cam_rgb.listen(lambda data: sensor_callback(data, sensor_queue, 3))
+        sensor_list.append(cam_rgb)
 
         # Sensor listening
         print("Stage: listening to sensor")
         while True:
             world.tick()
             try:
-                image = sensor_queue.get(True, 1.0)
+                # Petronas MPC control
+                xref, target_ind, dref = calc_ref_trajectory(state, cx, cy, cyaw, ck, sp, dl, target_ind)
+                xr = xref[0]
+                yr = xref[1]
+                path = [[x, y] for x, y in zip(xr, yr)]
+                path = np.asarray(path)
 
-                # streaming
-                if args.cv_stream:
-                    su.live_cam(image, dic.cam_spectate_1)
+                if args.hp:
+                    carla_world_plot(world, path, lt=1.0)
 
-                ms, kmh = su.speed_estimation(vehicle)
+                x0 = [state.x, state.y, state.v, state.yaw]  # current state
+                oa, odelta, ox, oy, oyaw, ov = iterative_linear_mpc_control(xref, x0, dref, oa, odelta)
 
-                # mpc
-                """
-                Your implementation 
-                """
-                temp_throttle, temp_steer, temp_brake = 0, 0, 0
-                vehicle.apply_control(carla.VehicleControl(throttle=temp_throttle, steer=temp_steer, brake=temp_brake))
+                if odelta is not None:
+                    di, ai = odelta[0], oa[0]
 
-            # Stopping key
-            except KeyboardInterrupt:
-                print("Terminated")
-                break
+                state, di = update_carla_state(petronas, state, di)
+                petronas.apply_control(carla.VehicleControl(throttle=ai, steer=di, brake=0))
+
+                for _ in range(len(sensor_list)):
+                    s_frame = sensor_queue.get(True, 1.0)
+                    # Red Bull E2E control
+                    if s_frame[1] == 3:
+                        controller.autodrive(s_frame[0], display_log=False, camera=False, pp1=True)
+                    elif s_frame[1] == 1 and args.cv_stream:
+                        su.live_cam(s_frame[0], dic.cam_spectate_1, "camera Petronas")
+                    elif s_frame[1] == 2 and args.cv_stream:
+                        su.live_cam(s_frame[0], dic.cam_spectate_1, "camera Red Bull")
+                    else:
+                        pass
+
+                # Stopping key
+                if keyboard.is_pressed("q"):
+                    print("Simulation stopped")
+                    break
 
             except Empty:
                 print("- Some of the sensor information is missed")

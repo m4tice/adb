@@ -13,7 +13,7 @@ from tensorflow.keras.callbacks import ModelCheckpoint
 from tensorflow.keras.models import load_model
 
 from tensorflow.keras.preprocessing.image import img_to_array
-from blockweek_ad.stream_a.nvidia_model import nvidia_model  # redirect to the correct model path if needed
+from blockweek_ad.E2E.nvidia_model import nvidia_model
 
 import os
 import cv2
