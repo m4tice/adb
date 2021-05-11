@@ -23,7 +23,7 @@ After finishing CARLA installation, clone this repo and place it as follows:
     .
     ├── ...
     ├── PythonAPI
-    │   ├── blockweek_ad          
+    │   ├── adb          
     │   ├── carla             
     │   ├── examples                      
     │   └── util                
