@@ -1,7 +1,5 @@
 # Automated Driving Block week
-Repository created for block week project: Autonomous Driving
-
-![Alt text](https://github.com/m4tice/adb/blob/main/assets/banner04.png)
+Repository created for block week project: Autonomous Driving  
 
 **SOFTWARES and FRAMEWORKS:**  
 * [CARLA](https://github.com/carla-simulator/carla) > 0.9.10  
