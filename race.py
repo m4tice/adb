@@ -561,10 +561,10 @@ def game_loop(args):
                     else:
                         pass
 
-                # Stopping key
-                if keyboard.is_pressed("q"):
-                    print("Simulation stopped")
-                    break
+            # Stopping key
+            except KeyboardInterrupt:
+                print("Terminated")
+                break
 
             except Empty:
                 print("- Some of the sensor information is missed")

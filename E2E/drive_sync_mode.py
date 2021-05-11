@@ -19,7 +19,6 @@ import blockweek_ad.ca_utils.tools as to
 import blockweek_ad.ca_utils.sensor_utils as su
 
 import time
-import keyboard
 import argparse
 import numpy as np
 
